@@ -22,6 +22,7 @@
 #
 ### Change Log ###
 #
+# 1.12  -- Added header to TSV, CSV, PSV file; Filed type output Line 105; changed file output format to utf-8 - Beercow
 # 1.11  -- minor updates
 # 1.10  -- changed file output format to utf-16
 # 1.9   -- added "|" as option option
@@ -47,103 +48,108 @@ import sys
 import json
 import codecs
 import argparse
-import os
 from datetime import datetime, timedelta
 
 
 __description__ = "Backstage Parser"
-__version__ = "1.11"
-__updated__ = "2019-07-17"
+__version__ = "1.12"
+__updated__ = "20123-03-09"
 __author__ = "Arsenal Recon"
 
 ######
+
 
 def getFilesInDirectory(directory):
 
     fileList = []
     for root, dirnames, filenames in os.walk(directory):
-        for file in filenames:
-            fileList.append(os.path.join(root, file))
+        if "backstageinappnavcache" in root.lower():
+            for file in filenames:
+                fileList.append(os.path.join(root, file))
     return fileList
 
-def processJSON(currentFile,logFile):
+
+def processJSON(currentFile):
 
     try:
         fIn = codecs.open(currentFile, 'r', encoding='utf-16le')
     except Exception as e:
-        logFile.write("Error (processJSON): %s\n" % e)
-    
+        print("Error (processJSON): %s\n" % e)
+
     try:
         json_string = fIn.read()
     except Exception as e:
-        logFile.write("Error (processJSON): %s\n" % e)
+        print("Error (processJSON): %s\n" % e)
 
     try:
         parsed_json = json.loads(json_string)
     except Exception as e:
-        logFile.write("Error (processJSON): %s\n" % e)
+        print("Error (processJSON): %s\n" % e)
         return None
 
     records = {}
-    for items in parsed_json['Folders']:
-        date = filetime_to_dt(items['LastModified'])
+    try:
+        for items in parsed_json['Folders']:
+            date = filetime_to_dt(items['LastModified'])
 
-        records[items["Url"]] = {}
-        records[items["Url"]]['Source'] = currentFile
-        records[items["Url"]]['Type'] = "Folder"
-        records[items["Url"]]['Path'] = items["Url"]
-        records[items["Url"]]['Name'] = items["DisplayName"]
-        records[items["Url"]]['ModifiedTime'] = date  
-    
-    for items in parsed_json['Files']:
-        date = filetime_to_dt(items['LastModified'])
+            records[items["Url"]] = {}
+            records[items["Url"]]['Source'] = currentFile
+            records[items["Url"]]['Type'] = "Folder"
+            records[items["Url"]]['Path'] = items["Url"]
+            records[items["Url"]]['Name'] = items["DisplayName"]
+            records[items["Url"]]['ModifiedTime'] = date
 
-        records[items["Url"]] = {}
-        records[items["Url"]]['Source'] = currentFile  
-        records[items["Url"]]['Type'] = "Folder"
-        records[items["Url"]]['Path'] = items["Url"]
-        records[items["Url"]]['Name'] = items["DisplayName"]
-        records[items["Url"]]['ModifiedTime'] = date  
-    return records
-    
-def processFile(currentFile,logFile):
+        for items in parsed_json['Files']:
+            date = filetime_to_dt(items['LastModified'])
+
+            records[items["Url"]] = {}
+            records[items["Url"]]['Source'] = currentFile
+            records[items["Url"]]['Type'] = "File"
+            records[items["Url"]]['Path'] = items["Url"]
+            records[items["Url"]]['Name'] = items["DisplayName"]
+            records[items["Url"]]['ModifiedTime'] = date
+        return records
+    except Exception as e:
+        print("Error (processJSON): %s\n" % e)
+        return None
+
+
+def processFile(currentFile):
     try:
         fIn = codecs.open(currentFile, 'r', encoding='utf-8')
     except Exception as e:
-        logFile.write("Error (processFile): %s\n" % e)
+        print("Error (processFile): %s\n" % e)
         return None
 
 
-    ## non-JSON files
-    ##First line of file is the master directory
+    # non-JSON files
+    # First line of file is the master directory
     try:
         currentLine = fIn.readline()
-        masterFolder=currentLine#.encode("ascii", errors="replace")
-    except:
+    except Exception:
         return None
 
     records = {}
-    ##Second line of file is "[Folders]"
+    # Second line of file is "[Folders]"
     try:
         currentLine = fIn.readline()
-    except:
+    except Exception:
         return None
 
     if currentLine.strip('\r\n') == "[Folders]":
         dirs = getDirs(fIn)
         noFolders = False
-    #currentLine = f.readline().strip('\r\n')
         for d in dirs:
             records[d["Path"]] = {}
             records[d["Path"]]['Source'] = currentFile
             records[d["Path"]]['Type'] = "Folder"
             records[d["Path"]]['Path'] = d["Path"]
             records[d["Path"]]['Name'] = d["FolderName"]
-            records[d["Path"]]['ModifiedTime'] = d["Modified Time(Human-UTC)"]           
+            records[d["Path"]]['ModifiedTime'] = d["Modified Time(Human-UTC)"]
     else:
-        noFolders = True            
-    ## Files
-    if currentLine.strip('\r\n') == "[Files]" or noFolders == False:
+        noFolders = True
+    # Files
+    if currentLine.strip('\r\n') == "[Files]" or noFolders is False:
         files = getFiles(fIn)
         for f in files:
             records[f["Path"]] = {}
@@ -155,7 +161,8 @@ def processFile(currentFile,logFile):
 
     return records
 
-def processRawFile(currentFile,logFile):
+
+def processRawFile(currentFile):
     csvPattern = re.compile('(?:\\\\\\\\|[A-Z]:\\\\).+\|*\|.*\|[-]*[0-9]{8,10}:[0-9]{8}')
     jsonPattern = re.compile('\{"Url": "(?:\\\\\\\\|[A-Z]:\\\\).+?", "DisplayName": ".*?", "Author": ".*?", "ResourceId": ".*?", "RootResourceId": ".*?", "LastModified": [0-9]+?, "SharingLevelDescription": ".*?"\}')
     fIn = open(currentFile, 'rb')
@@ -164,21 +171,22 @@ def processRawFile(currentFile,logFile):
     try:
         buffer = fIn.read(bufferLen)
     except Exception as e:
-        logFile.write("Error (processRawFile): %s\n" % e)
+        print("Error (processRawFile): %s\n" % e)
 
     records = {}
-    while buffer != None and buffer != b'':
+    while buffer is not None and buffer != b'':
         try:
             csvMatch = re.findall(csvPattern, buffer.decode('utf-8'))
         except Exception as e:
-            logFile.write("Error (processRawFile): %s\n" % e)
+            print("Error (processRawFile): %s\n" % e)
             pass
         try:
             jsonMatch = re.findall(jsonPattern, buffer.decode('utf-16'))
         except Exception as e:
-            logFile.write("Error (processRawFile): %s\n" % e)
+            print("Error (processRawFile): %s\n" % e)
             pass
-        import pdb; pdb.set_trace()
+        import pdb
+        pdb.set_trace()
         if csvMatch:
             for match in csvMatch:
                 try:
@@ -192,9 +200,9 @@ def processRawFile(currentFile,logFile):
                         humanTime = filetime_to_dt(int(fileTimeDate, 16))
                     else:
                         humanTime = "N/A"
-                    records[match.split('|')[0]]['ModifiedTime'] = humanTime  
+                    records[match.split('|')[0]]['ModifiedTime'] = humanTime
                 except Exception as e:
-                    logFile.write("Error (processRawFile): %s\n" % e) 
+                    print("Error (processRawFile): %s\n" % e)
                     pass
         if jsonMatch:
             for match in jsonMatch:
@@ -207,44 +215,43 @@ def processRawFile(currentFile,logFile):
                         records[thisMatch.group(1)]['Path'] = thisMatch.group(1)
                         records[thisMatch.group(1)]['Name'] = thisMatch.group(2)
                         date = filetime_to_dt(int(thisMatch.group(6)))
-                        records[thisMatch.group(1)]['ModifiedTime'] = date  
+                        records[thisMatch.group(1)]['ModifiedTime'] = date
                 except Exception as e:
-                    logFile.write("Error (processRawFile): %s\n" % e) 
-                    pass            
-            print ("JSON Hit")
+                    print("Error (processRawFile): %s\n" % e)
+                    pass
+            print("JSON Hit")
         try:
             buffer = fIn.read(bufferLen)
         except Exception as e:
-            logFile.write("Error (processRawFile): %s\n" % e)
+            print("Error (processRawFile): %s\n" % e)
             buffer = None
     return records
 
 
 def twos_comp(val, bits):
-	#https://stackoverflow.com/questions/1604464/twos-complement-in-python
+    # https://stackoverflow.com/questions/1604464/twos-complement-in-python
     mask = '0x'+'f'*bits
-    val = val ^ int(mask,16)-1
+    val = val ^ int(mask, 16)-1
     if hex(val)[-1:] == "L":
-    	return '0x'+hex(val)[-9:-1]
+        return '0x'+hex(val)[-9:-1]
     else:
         return '0x'+hex(val)[-8:]
     return val
 
 
 def filetime_to_dt(ft):
-	#https://stackoverflow.com/questions/38878647/python-convert-filetime-to-datetime-for-dates-before-1970/38878860#38878860
-	EPOCH_AS_FILETIME = 116444736000000000  # January 1, 1970 as MS file time
-	HUNDREDS_OF_NANOSECONDS = 10000000
-	us = (ft - EPOCH_AS_FILETIME) // 10
-	return (datetime(1970, 1, 1) + timedelta(microseconds = us)).strftime("%Y-%m-%d %H:%M:%S")
+    # https://stackoverflow.com/questions/38878647/python-convert-filetime-to-datetime-for-dates-before-1970/38878860#38878860
+    EPOCH_AS_FILETIME = 116444736000000000  # January 1, 1970 as MS file time
+    us = (ft - EPOCH_AS_FILETIME) // 10
+    return (datetime(1970, 1, 1) + timedelta(microseconds=us)).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def strToFileTime(val):
 
     dates = val.split(':')
     if len(dates) != 2:
-        print ("More information expected with dates %s" % str(dates))
-        exit(0)
+        print("More information expected with dates %s" % str(dates))
+        sys.exit(0)
     dates[0] = twos_comp(int(dates[0]), 32)
     if dates[0][0] == "-":
         dates[0] = dates[0][3:]
@@ -252,7 +259,7 @@ def strToFileTime(val):
         dates[0] = dates[0][2:]
     try:
         dates[1] = hex(int(dates[1]))
-    except:
+    except Exception:
         return "N/A"
 
     fileTime = '0x'+dates[1][2:]+dates[0]
@@ -264,7 +271,7 @@ def getDirs(f):
     dirs = []
     i = 0
     currentLine = f.readline().strip('\r\n')
-	##loop on folders until we hit "[Files]"
+    # loop on folders until we hit "[Files]"
     while currentLine.strip('\r\n') != "[Files]" and currentLine.strip('\r\n') != '':
         line = currentLine.split('|')
         path = line[0]
@@ -275,10 +282,13 @@ def getDirs(f):
         else:
             humanTime = "N/A"
         dirs.append(i)
-        dirs[i] = {"Path": path, "FolderName":foldername, "Modified Time(Hex)":fileTimeDate, "Modified Time(Human-UTC)":humanTime}
+        dirs[i] = {"Path": path, "FolderName": foldername,
+                   "Modified Time(Hex)": fileTimeDate,
+                   "Modified Time(Human-UTC)": humanTime}
         i = i + 1
         currentLine = f.readline().strip('\r\n')
     return dirs
+
 
 def getFiles(f):
 
@@ -295,24 +305,23 @@ def getFiles(f):
         else:
             humanTime = "N/A"
         files.append(i)
-        files[i] = {"Path": path, "FolderName":filename, "Modified Time(Hex)":fileTimeDate, "Modified Time(Human-UTC)":humanTime}
+        files[i] = {"Path": path, "FolderName": filename,
+                    "Modified Time(Hex)": fileTimeDate,
+                    "Modified Time(Human-UTC)": humanTime}
         i = i + 1
         currentLine = f.readline().strip('\r\n')
     return files
-
-
 
 
 def main(arguments):
 
     fileList = []
     now = datetime.now().strftime("%Y%m%d%H%M%S")
-    logFileName = 'backstage-'+now+'.log'
-    logFile = open(logFileName, 'w')
     start = datetime.now()
 
-    if arguments.debug == True:
-        import pdb; pdb.set_trace()
+    if arguments.debug is True:
+        import pdb
+        pdb.set_trace()
     if arguments.f:
         fileList.append(arguments.f)
     elif arguments.d:
@@ -321,57 +330,89 @@ def main(arguments):
     masterList = {}
     for currentFile in fileList:
 
-        logFile.write("Processing file: %s\n" % currentFile)
+        print("Processing file: %s\n" % currentFile)
         if arguments.r:
-            output = processRawFile(currentFile,logFile)
+            output = processRawFile(currentFile)
         else:
             if currentFile.endswith(".json"):
-                output = processJSON(currentFile,logFile)
+                output = processJSON(currentFile)
             else:
-                output = processFile(currentFile,logFile)
-        if output != None:
+                output = processFile(currentFile)
+        if output is not None:
             masterList.update(output)
 
-
-    if masterList == None or len(masterList) == 0:
-        print ("No records found")
-        exit(0)
+    if masterList is None or len(masterList) == 0:
+        print("No records found")
+        sys.exit(0)
 
     fOut = None
     if arguments.o:
         try:
-            fOut = open(arguments.o, 'w', encoding='utf-16')
+            fOut = open(arguments.o, 'w', encoding='utf-8')
         except Exception as e:
-            logFile.write("Error opening output file: %s\n" % str(e))
+            print("Error opening output file: %s\n" % str(e))
             arguments.o = None
 
     if arguments.oj:
         j = json.dumps(masterList)
-        print (j)
-        if arguments.o: fOut.write(j) 
+        print(j)
+        if arguments.o:
+            fOut.write(j)
     elif arguments.ot:
-        print ("Type\tPath\tName\tModifiedTime(UTC)\tSoure")
+        print("Type\tPath\tName\tModifiedTime(UTC)\tSoure")
+        if arguments.o:
+            fOut.write("Type\tPath\tName\tModifiedTime(UTC)\tSoure\n")
         for row in masterList:
-            print ("%s\t%s\t%s\t%s\t%s" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
-            if arguments.o: fOut.write("%s\t%s\t%s\t%s\t%s\n" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
+            print("%s\t%s\t%s\t%s\t%s" % (masterList[row]['Type'],
+                                          masterList[row]['Path'],
+                                          masterList[row]['Name'],
+                                          masterList[row]['ModifiedTime'],
+                                          masterList[row]['Source']))
+            if arguments.o:
+                fOut.write("%s\t%s\t%s\t%s\t%s\n" % (masterList[row]['Type'],
+                                                     masterList[row]['Path'],
+                                                     masterList[row]['Name'],
+                                                     masterList[row]['ModifiedTime'],
+                                                     masterList[row]['Source']))
     elif arguments.op:
-        print ("Type|Path|Name|ModifiedTime(UTC)|Soure")
+        print("Type|Path|Name|ModifiedTime(UTC)|Soure")
+        if arguments.o:
+            fOut.write("Type|Path|Name|ModifiedTime(UTC)|Soure\n")
         for row in masterList:
-            print ("%s|%s|%s|%s|%s" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
-            if arguments.o: fOut.write("%s|%s|%s|%s|%s\n" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
+            print("%s|%s|%s|%s|%s" % (masterList[row]['Type'],
+                                      masterList[row]['Path'],
+                                      masterList[row]['Name'],
+                                      masterList[row]['ModifiedTime'],
+                                      masterList[row]['Source']))
+            if arguments.o:
+                fOut.write("%s|%s|%s|%s|%s\n" % (masterList[row]['Type'],
+                                                 masterList[row]['Path'],
+                                                 masterList[row]['Name'],
+                                                 masterList[row]['ModifiedTime'],
+                                                 masterList[row]['Source']))
     else:
-        print ("Type,Path,Name,ModifiedTime(UTC),Source")
+        print("Type,Path,Name,ModifiedTime(UTC),Source")
+        if arguments.o:
+            fOut.write("Type,Path,Name,ModifiedTime(UTC),Source\n")
         for row in masterList:
-            print ("'%s','%s','%s','%s','%s'" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
-            if arguments.o: fOut.write ("'%s','%s','%s','%s','%s'\n" % (masterList[row]['Type'], masterList[row]['Path'], masterList[row]['Name'],masterList[row]['ModifiedTime'],masterList[row]['Source']))
+            print('"%s","%s","%s","%s","%s"' % (masterList[row]['Type'],
+                                                masterList[row]['Path'],
+                                                masterList[row]['Name'],
+                                                masterList[row]['ModifiedTime'],
+                                                masterList[row]['Source']))
+            if arguments.o:
+                fOut.write('"%s","%s","%s","%s","%s"\n' % (masterList[row]['Type'],
+                                                           masterList[row]['Path'],
+                                                           masterList[row]['Name'],
+                                                           masterList[row]['ModifiedTime'],
+                                                           masterList[row]['Source']))
 
     end = datetime.now()
-    print ("%d files processed, %d records found, %s elapsed time" % (len(fileList), len(masterList), str(end-start)))
-    logFile.write("%d files processed, %d records found, %s elapsed time\n" % (len(fileList), len(masterList), str(end-start)))
-    
-    if arguments.o: fOut.close()
-        
-    logFile.close()
+    print("%d files processed, %d records found, %s elapsed time\n" % (len(fileList), len(masterList), str(end-start)))
+
+    if arguments.o:
+        fOut.close()
+
 
 if __name__ == "__main__":
     # execute only if run as a script
@@ -386,17 +427,20 @@ if __name__ == "__main__":
     parser.add_argument("-ot", action='store_true', help="Flag: Output as TSV")
     parser.add_argument("-oc", action='store_true', help="Flag: Output as CSV")
     parser.add_argument("-op", action='store_true', help="Flag: Output as PSV")
-   
+
     parser.add_argument("--debug", action='store_true', help="Flag: debug")
-    
+
+    if len(sys.argv) == 1:
+        parser.print_help()
+        parser.exit()
+
     args = parser.parse_args()
 
     if args.f and args.d:
-        print ("Choose file OR directory")
-        exit(0)
+        print("Choose file OR directory")
+        sys.exit(0)
 
-
-    if sys.version_info <= (3,0):
+    if sys.version_info <= (3, 0):
         print("Sorry, requires Python 3.x, not Python 2.x")
         sys.exit(1)
 
